@@ -7,10 +7,18 @@ from sqlalchemy.exc import OperationalError
 
 
 class BusinessError(Exception):
-    def __init__(self, message: str, *, code: str = "BUSINESS_ERROR", status_code: int = 400):
+    def __init__(
+        self,
+        message: str,
+        *,
+        code: str = "BUSINESS_ERROR",
+        status_code: int = 400,
+        details: Any = None,
+    ):
         self.message = message
         self.code = code
         self.status_code = status_code
+        self.details = details
         super().__init__(message)
 
 
@@ -28,7 +36,7 @@ def register_exception_handlers(app: FastAPI) -> None:
     async def handle_business_error(_: Request, exc: BusinessError) -> JSONResponse:
         return JSONResponse(
             status_code=exc.status_code,
-            content=error_body(exc.code, exc.message),
+            content=error_body(exc.code, exc.message, exc.details),
         )
 
     @app.exception_handler(RequestValidationError)

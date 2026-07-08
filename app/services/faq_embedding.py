@@ -1,5 +1,7 @@
+from collections.abc import Callable
 from datetime import datetime
 from hashlib import sha256
+from time import perf_counter
 
 from qdrant_client.http import models
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,6 +15,7 @@ from app.schemas.embedding import (
     FaqEmbeddingRebuildData,
     FaqEmbeddingRebuildItem,
     FaqSearchData,
+    FaqSearchDebug,
     FaqSearchItem,
 )
 from app.services.embedding import embedding_service
@@ -46,16 +49,20 @@ class FaqEmbeddingService:
         *,
         limit: int,
         only_pending: bool,
+        faq_ids: list[int] | None = None,
+        progress_callback: Callable[[FaqEmbeddingRebuildItem, int, int], None] | None = None,
     ) -> FaqEmbeddingRebuildData:
         faqs = await self.repository.list_embedding_candidates(
             limit=limit,
             only_pending=only_pending,
+            faq_ids=faq_ids,
         )
         faq_ids = [faq.id for faq in faqs]
         items: list[FaqEmbeddingRebuildItem] = []
 
         for faq_id in faq_ids:
             try:
+                await self._mark_processing(faq_id)
                 faq = await self.repository.get_by_id(faq_id)
                 if faq is None:
                     raise BusinessError(
@@ -73,6 +80,8 @@ class FaqEmbeddingService:
                         message=str(exc)[:500],
                     )
                 )
+                if progress_callback:
+                    progress_callback(items[-1], len(items), len(faq_ids))
                 continue
 
             items.append(
@@ -82,6 +91,8 @@ class FaqEmbeddingService:
                     message="向量生成成功",
                 )
             )
+            if progress_callback:
+                progress_callback(items[-1], len(items), len(faq_ids))
 
         succeeded = sum(1 for item in items if item.success)
         failed = len(items) - succeeded
@@ -93,7 +104,11 @@ class FaqEmbeddingService:
         )
 
     async def search_faqs(self, *, query: str, top_k: int) -> FaqSearchData:
+        started = perf_counter()
+        embedding_started = perf_counter()
         vector = await embedding_service.embed_text(query)
+        embedding_ms = int((perf_counter() - embedding_started) * 1000)
+        search_started = perf_counter()
         results = await vector_store_service.search(
             vector=vector,
             top_k=top_k,
@@ -104,6 +119,8 @@ class FaqEmbeddingService:
                 ]
             ),
         )
+        vector_search_ms = int((perf_counter() - search_started) * 1000)
+        total_ms = int((perf_counter() - started) * 1000)
         return FaqSearchData(
             query=query,
             top_k=top_k,
@@ -111,6 +128,7 @@ class FaqEmbeddingService:
                 FaqSearchItem(
                     faq_id=int(item["payload"].get("faq_id") or item["id"]),
                     knowledge_id=item["payload"].get("knowledge_id"),
+                    rank=index,
                     score=float(item["score"]),
                     standard_question=item["payload"].get("standard_question"),
                     answer=item["payload"].get("answer"),
@@ -119,8 +137,18 @@ class FaqEmbeddingService:
                     category_l3=item["payload"].get("category_l3"),
                     status=item["payload"].get("status"),
                 )
-                for item in results
+                for index, item in enumerate(results, start=1)
             ],
+            debug=FaqSearchDebug(
+                embedding_model=settings.embedding_model,
+                embedding_dimension=settings.embedding_dimension,
+                vector_collection=settings.qdrant_collection,
+                query_length=len(query),
+                embedding_ms=embedding_ms,
+                vector_search_ms=vector_search_ms,
+                total_ms=total_ms,
+                returned=len(results),
+            ),
         )
 
     async def _generate_for_faq(self, faq: KbFaq) -> FaqEmbeddingData:
@@ -182,6 +210,20 @@ class FaqEmbeddingService:
             return
         faq.embedding_status = 2
         faq.embedding_error = str(exc)[:2000]
+        faq.updated_at = datetime.now()
+        try:
+            await self.session.commit()
+        except Exception:
+            await self.session.rollback()
+            raise
+
+    async def _mark_processing(self, faq_id: int) -> None:
+        await self.session.rollback()
+        faq = await self.repository.get_by_id(faq_id, for_update=True)
+        if faq is None:
+            return
+        faq.embedding_status = 3
+        faq.embedding_error = None
         faq.updated_at = datetime.now()
         try:
             await self.session.commit()

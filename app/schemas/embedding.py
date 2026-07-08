@@ -15,6 +15,7 @@ class FaqEmbeddingRebuildRequest(BaseModel):
 
     limit: int = Field(default=100, ge=1, le=1000)
     only_pending: bool = True
+    faq_ids: list[int] | None = Field(default=None, max_length=1000)
 
 
 class FaqEmbeddingRebuildItem(BaseModel):
@@ -30,6 +31,23 @@ class FaqEmbeddingRebuildData(BaseModel):
     items: list[FaqEmbeddingRebuildItem]
 
 
+class FaqEmbeddingTaskData(BaseModel):
+    task_id: str
+    status: str
+    limit: int
+    only_pending: bool
+    faq_ids: list[int] | None = None
+    total: int = 0
+    progress: int = 0
+    succeeded: int = 0
+    failed: int = 0
+    message: str
+    items: list[FaqEmbeddingRebuildItem] = Field(default_factory=list)
+    created_at: str
+    started_at: str | None = None
+    finished_at: str | None = None
+
+
 class FaqSearchRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -40,6 +58,7 @@ class FaqSearchRequest(BaseModel):
 class FaqSearchItem(BaseModel):
     faq_id: int
     knowledge_id: str | None = None
+    rank: int | None = None
     score: float
     standard_question: str | None = None
     answer: str | None = None
@@ -49,8 +68,19 @@ class FaqSearchItem(BaseModel):
     status: int | None = None
 
 
+class FaqSearchDebug(BaseModel):
+    embedding_model: str
+    embedding_dimension: int
+    vector_collection: str
+    query_length: int
+    embedding_ms: int
+    vector_search_ms: int
+    total_ms: int
+    returned: int
+
+
 class FaqSearchData(BaseModel):
     query: str
     top_k: int
     items: list[FaqSearchItem]
-
+    debug: FaqSearchDebug | None = None

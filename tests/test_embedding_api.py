@@ -10,6 +10,7 @@ from app.api.v1.endpoints.search import (
 )
 from app.main import app
 from app.schemas.embedding import FaqEmbeddingData, FaqEmbeddingRebuildData, FaqSearchData
+from app.services.embedding_task import faq_embedding_task_manager
 from app.services.faq_embedding import build_faq_embedding_text
 
 client = TestClient(app)
@@ -78,7 +79,15 @@ def test_generate_faq_embedding_endpoint() -> None:
     assert body["data"]["embedding_dimension"] == 1024
 
 
-def test_rebuild_faq_embeddings_endpoint() -> None:
+def test_rebuild_faq_embeddings_endpoint(monkeypatch) -> None:
+    async def fake_run_rebuild_task(task_id: str) -> None:
+        assert task_id
+
+    monkeypatch.setattr(
+        faq_embedding_task_manager,
+        "_run_rebuild_task",
+        fake_run_rebuild_task,
+    )
     app.dependency_overrides[get_faq_embedding_service_for_faqs] = override_faq_embedding_service
     try:
         response = client.post(
@@ -88,11 +97,29 @@ def test_rebuild_faq_embeddings_endpoint() -> None:
     finally:
         app.dependency_overrides.clear()
 
+    assert response.status_code == 202
+    body = response.json()
+    assert body["code"] == "OK"
+    assert body["data"]["status"] in {"pending", "running", "failed"}
+    assert body["data"]["limit"] == 10
+    assert body["data"]["only_pending"] is False
+
+
+def test_get_rebuild_faq_embeddings_task_endpoint() -> None:
+    task = faq_embedding_task_manager.create_rebuild_task(
+        limit=3,
+        only_pending=True,
+        faq_ids=[1, 2],
+        start=False,
+    )
+
+    response = client.get(f"/api/v1/faqs/embeddings/tasks/{task.task_id}")
+
     assert response.status_code == 200
     body = response.json()
     assert body["code"] == "OK"
-    assert body["data"]["succeeded"] == 1
-    assert body["data"]["failed"] == 0
+    assert body["data"]["task_id"] == task.task_id
+    assert body["data"]["faq_ids"] == [1, 2]
 
 
 def test_search_faqs_endpoint() -> None:

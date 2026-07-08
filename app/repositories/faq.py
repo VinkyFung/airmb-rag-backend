@@ -56,11 +56,47 @@ class FaqRepository:
             statement = statement.with_for_update()
         return await self.session.scalar(statement)
 
-    async def list_embedding_candidates(self, *, limit: int, only_pending: bool) -> list[KbFaq]:
+    async def get_by_knowledge_id(
+        self,
+        knowledge_id: str,
+        *,
+        for_update: bool = False,
+    ) -> KbFaq | None:
+        statement = select(KbFaq).where(
+            KbFaq.knowledge_id == knowledge_id,
+            KbFaq.deleted_at.is_(None),
+        )
+        if for_update:
+            statement = statement.with_for_update()
+        return await self.session.scalar(statement)
+
+    async def get_by_standard_question(
+        self,
+        standard_question: str,
+        *,
+        for_update: bool = False,
+    ) -> KbFaq | None:
+        statement = select(KbFaq).where(
+            KbFaq.standard_question == standard_question,
+            KbFaq.deleted_at.is_(None),
+        )
+        if for_update:
+            statement = statement.with_for_update()
+        return await self.session.scalar(statement)
+
+    async def list_embedding_candidates(
+        self,
+        *,
+        limit: int,
+        only_pending: bool,
+        faq_ids: list[int] | None = None,
+    ) -> list[KbFaq]:
         filters = [
             KbFaq.deleted_at.is_(None),
-            KbFaq.status == 1,
+            KbFaq.status.in_((0, 1)),
         ]
+        if faq_ids:
+            filters.append(KbFaq.id.in_(faq_ids))
         if only_pending:
             filters.append(KbFaq.embedding_status != 1)
 
