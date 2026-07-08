@@ -1,5 +1,6 @@
 from functools import lru_cache
 
+from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy import URL
 
@@ -30,6 +31,22 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
     cors_origin_regex: str = r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$"
     redis_url: str = "redis://127.0.0.1:6379/0"
+
+    vector_db_provider: str = "qdrant"
+    qdrant_url: str = "http://127.0.0.1:6333"
+    qdrant_collection: str = "airmb_faq_vectors"
+    qdrant_timeout: int = 8
+
+    embedding_provider: str = "local"
+    embedding_model: str = "BAAI/bge-m3"
+    embedding_dimension: int = 1024
+    embedding_device: str = "cpu"
+    embedding_batch_size: int = 8
+    embedding_max_length: int = 2048
+    embedding_use_fp16: bool = False
+
+    hf_token: SecretStr | None = None
+    hf_hub_disable_symlinks_warning: bool = True
 
     @property
     def cors_origin_list(self) -> list[str]:

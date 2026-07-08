@@ -25,6 +25,9 @@ class FaqItem(BaseModel):
     human_required: bool
     status: int
     review_status: int
+    embedding_status: int = 0
+    embedding_error: str | None = None
+    embedding_input_hash: str | None = None
     updated_at: datetime
     updated_by: str | None
 
@@ -88,4 +91,3 @@ class FaqUpdate(BaseModel):
 class FaqDeleteData(BaseModel):
     id: int
     status: int
-

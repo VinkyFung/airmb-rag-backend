@@ -56,6 +56,25 @@ class FaqRepository:
             statement = statement.with_for_update()
         return await self.session.scalar(statement)
 
+    async def list_embedding_candidates(self, *, limit: int, only_pending: bool) -> list[KbFaq]:
+        filters = [
+            KbFaq.deleted_at.is_(None),
+            KbFaq.status == 1,
+        ]
+        if only_pending:
+            filters.append(KbFaq.embedding_status != 1)
+
+        statement = (
+            select(KbFaq)
+            .where(*filters)
+            .order_by(KbFaq.updated_at.desc(), KbFaq.id.desc())
+            .limit(limit)
+        )
+        return list((await self.session.scalars(statement)).all())
+
+    async def load_paraphrases(self, faq_ids: list[int]) -> dict[int, list[str]]:
+        return await self._load_paraphrases(faq_ids)
+
     async def replace_paraphrases(
         self,
         *,
@@ -134,4 +153,3 @@ class FaqRepository:
         for faq_id, text in rows:
             result.setdefault(faq_id, []).append(text)
         return result
-

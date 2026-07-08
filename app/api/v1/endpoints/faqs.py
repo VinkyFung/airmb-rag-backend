@@ -5,8 +5,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db_session
 from app.schemas.common import ApiResponse
+from app.schemas.embedding import (
+    FaqEmbeddingData,
+    FaqEmbeddingRebuildData,
+    FaqEmbeddingRebuildRequest,
+)
 from app.schemas.faq import FaqDeleteData, FaqItem, FaqListData, FaqUpdate
 from app.services.faq import FaqService
+from app.services.faq_embedding import FaqEmbeddingService
 
 router = APIRouter(prefix="/faqs")
 
@@ -15,6 +21,12 @@ def get_faq_service(
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> FaqService:
     return FaqService(session)
+
+
+def get_faq_embedding_service(
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> FaqEmbeddingService:
+    return FaqEmbeddingService(session)
 
 
 @router.get("", response_model=ApiResponse[FaqListData])
@@ -34,6 +46,31 @@ async def list_faqs(
         status=faq_status,
     )
     return ApiResponse(data=data)
+
+
+@router.post("/{faq_id}/embedding", response_model=ApiResponse[FaqEmbeddingData])
+async def generate_faq_embedding(
+    faq_id: int,
+    service: Annotated[FaqEmbeddingService, Depends(get_faq_embedding_service)],
+) -> ApiResponse[FaqEmbeddingData]:
+    return ApiResponse(
+        message="FAQ 向量生成成功",
+        data=await service.generate_faq_embedding(faq_id),
+    )
+
+
+@router.post("/embeddings/rebuild", response_model=ApiResponse[FaqEmbeddingRebuildData])
+async def rebuild_faq_embeddings(
+    payload: FaqEmbeddingRebuildRequest,
+    service: Annotated[FaqEmbeddingService, Depends(get_faq_embedding_service)],
+) -> ApiResponse[FaqEmbeddingRebuildData]:
+    return ApiResponse(
+        message="FAQ 向量批量重建完成",
+        data=await service.rebuild_embeddings(
+            limit=payload.limit,
+            only_pending=payload.only_pending,
+        ),
+    )
 
 
 @router.put("/{faq_id}", response_model=ApiResponse[FaqItem])
@@ -59,4 +96,3 @@ async def delete_faq(
         message="FAQ 已停用并软删除",
         data=await service.delete_faq(faq_id, updated_by=updated_by),
     )
-

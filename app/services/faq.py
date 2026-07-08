@@ -161,7 +161,9 @@ class FaqService:
             human_required=faq.human_required,
             status=faq.status,
             review_status=faq.review_status,
+            embedding_status=faq.embedding_status,
+            embedding_error=faq.embedding_error,
+            embedding_input_hash=faq.embedding_input_hash,
             updated_at=faq.updated_at,
             updated_by=faq.updated_by,
         )
-

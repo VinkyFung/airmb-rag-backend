@@ -50,3 +50,12 @@ def register_exception_handlers(app: FastAPI) -> None:
             ),
         )
 
+    @app.exception_handler(Exception)
+    async def handle_unexpected_error(_: Request, __: Exception) -> JSONResponse:
+        return JSONResponse(
+            status_code=500,
+            content=error_body(
+                "INTERNAL_SERVER_ERROR",
+                "服务处理失败，请查看后端控制台日志定位具体原因",
+            ),
+        )
